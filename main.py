@@ -159,7 +159,6 @@ class DiskImageWriter(QtWidgets.QWidget):
                 return False
         return True
 
-
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     ex = DiskImageWriter()

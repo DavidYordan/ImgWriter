@@ -1,12 +1,9 @@
 import os
-import pywintypes
 import socket
 import subprocess
 import sys
 import threading
 import time
-import win32file
-from ctypes import windll, byref, c_ulong, c_void_p
 from PyQt6.QtCore import QObject, pyqtSignal
 from queue import Queue
 from uuid import uuid4

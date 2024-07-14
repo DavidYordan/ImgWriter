@@ -213,7 +213,6 @@ class DiskImageWriter(tk.Tk):
                 return False
         return True
 
-
 if __name__ == "__main__":
     app = DiskImageWriter()
     app.mainloop()
