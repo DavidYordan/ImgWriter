@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import time
+import yaml
 from PyQt6.QtCore import QObject, pyqtSignal
 from queue import Queue
 from uuid import uuid4
@@ -12,18 +13,16 @@ class QemuTool(QObject):
     finished_signal = pyqtSignal()
     output_signal = pyqtSignal(str)
 
-    def __init__(self, device):
+    def __init__(self, device, management_id, device_id):
         super().__init__()
-        self.setup_paths(device)
+        self.setup_paths(device, management_id, device_id)
         self.command_queue = Queue()
-        self.legacy_boot = False
-        self.params = {}
         self.core_port = None
         self.core_socket = None
+        self.legacy_boot = False
         self.monitor_port = None
         self.monitor_socket = None
         self.running = True
-        self.uuid = ''
         self.output_signal.emit(f'准备刷入固件至 {device}...')
         self.tasks_queue = Queue()
         self.setup_tasks()
@@ -193,20 +192,22 @@ class QemuTool(QObject):
             self.command_queue.put(f'mkdir -p /mnt/disk && mount /dev/sdb2 /mnt/disk')
 
     def mount_disk_state(self, line):
+        if 'argument' in line:
+            self.current_state = self.pass_state
+            self.output_signal.emit(f'挂载失败，请重启软件重试...')
+            return
         if 'mkdir' not in line:
             return
         time.sleep(1)
-        self.uuid = str(uuid4())
         self.current_state = self.tasks_queue.get()
-        self.output_signal.emit('注入uuid...')
-        self.command_queue.put(f'echo uuid: {self.uuid} > /mnt/disk/etc/system.yaml')
+        self.command_queue.put(f'echo -e "{self.yaml}" > /mnt/disk/etc/system.yaml')
 
     def umount_disk_state(self, line):
         if 'argument' in line:
             self.current_state = self.pass_state
             self.output_signal.emit(f'挂载失败，请重启软件重试...')
             return
-        if 'uuid' not in line:
+        if 'UUID' not in line:
             return
         time.sleep(0.5)
         self.current_state = self.tasks_queue.get()
@@ -221,9 +222,6 @@ class QemuTool(QObject):
         self.current_state = self.tasks_queue.get()
         self.output_signal.emit('关闭固件平台...')
         self.command_queue.put('poweroff')
-        with open('uuid.txt', 'w', encoding='utf-8') as f:
-            f.write(f'请将此id与平台管理账号绑定: {self.uuid}')
-        os.system('uuid.txt')
         self.running = False
         self.finished_signal.emit()
 
@@ -278,7 +276,7 @@ class QemuTool(QObject):
                 if command == 'poweroff':
                     return
 
-    def setup_paths(self, device):
+    def setup_paths(self, device, management_id, device_id):
         if hasattr(sys, '_MEIPASS'):
             sysPath = sys._MEIPASS
         else:
@@ -287,8 +285,18 @@ class QemuTool(QObject):
         self.qemu = os.path.join(sysPath, 'qemutools', 'qemu-system-x86_64.exe')
         self.netflexImg = os.path.join(sysPath, 'img', 'netflex.img')
         self.optoolImg = os.path.join(sysPath, 'img', 'optool.img')
-        self.pipe_name = r'\\.\pipe\qemu_pipe'
-        self.monitor_pipe_name = r'\\.\pipe\qemu_monitor'
+        self.yaml = yaml.dump(
+            {
+                'UUID': str(uuid4()),
+                'ManagementID': management_id,
+                'DeviceID': device_id,
+                'LocalPort': 56765,
+                'Servers': [f'clent{i}.duoruduochu.com' for i in range(1, 7)],
+                'HeartbeatInterval': 10,
+                'HeartbeatRetries': 3
+            },
+            default_flow_style=False
+        ).replace('\n', '\\n').replace('"', '\\"')
 
     def write_img_to_disk(self):
         process = self.run_qemu(self.prepare_optool_command())

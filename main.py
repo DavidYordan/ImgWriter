@@ -121,8 +121,34 @@ class DiskImageWriter(QtWidgets.QWidget):
             return
 
         device = self.disk_table.item(selected_row, 0).text()
+        
+        management_id, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "请输入管理ID",
+            f"您选择了设备{device}\n请输入管理ID:"
+        )
+        if not ok:
+            return
+        if not management_id:
+            QtWidgets.QMessageBox.warning(self, "警告", "管理ID不能为空。")
+            return
 
-        confirm = QtWidgets.QMessageBox.question(self, "确认", f"你确定要刷入固件至 {device} 吗？这将擦除磁盘上的所有数据。")
+        device_id, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "请输入设备标识",
+            f"您选择了设备: {device}\n您的管理ID是: {management_id}\n请输入设备标识:"
+        )
+        if not ok:
+            return
+        if not device_id:
+            QtWidgets.QMessageBox.warning(self, "警告", "设备标识不能为空。")
+            return
+
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            "确认",
+            f"您选择了设备: {device}\n您的管理ID是: {management_id}\n您的设备标识是: {device_id}\n您确定要刷入固件吗？这将擦除磁盘上的所有数据。",
+        )
         if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         
@@ -132,7 +158,7 @@ class DiskImageWriter(QtWidgets.QWidget):
             self.start_button.setEnabled(True)
             return
         
-        self.qemu_tool = QemuTool(device)
+        self.qemu_tool = QemuTool(device, management_id, device_id)
         self.qemu_thread = QThread()
         self.qemu_tool.moveToThread(self.qemu_thread)
         self.qemu_tool.output_signal.connect(self.log)

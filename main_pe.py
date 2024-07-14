@@ -3,7 +3,7 @@ import subprocess
 import time
 import re
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, simpledialog, scrolledtext
 from queue import Queue, Empty
 from threading import Thread
 from qemutool_pe import QemuTool
@@ -180,7 +180,17 @@ class DiskImageWriter(tk.Tk):
 
         device = self.disk_table.item(selected_item[0], 'values')[1]
 
-        confirm = messagebox.askquestion("确认", f"你确定要刷入固件至 {device} 吗？这将擦除磁盘上的所有数据。")
+        management_id = simpledialog.askstring("请输入管理ID", f"您选择了设备{device}\n请输入管理ID:")
+        if not management_id:
+            messagebox.showwarning("警告", "管理ID不能为空。")
+            return
+
+        device_id = simpledialog.askstring("请输入设备标识", f"您选择了设备: {device}\n您的管理ID是: {management_id}\n请输入设备标识:")
+        if not device_id:
+            messagebox.showwarning("警告", "设备标识不能为空。")
+            return
+
+        confirm = messagebox.askquestion("确认", f"您选择了设备: {device}\n您的管理ID是: {management_id}\n您的设备标识是: {device_id}\n您确定要刷入固件吗？这将擦除磁盘上的所有数据。")
         if confirm != 'yes':
             return
         
@@ -190,7 +200,7 @@ class DiskImageWriter(tk.Tk):
             self.start_button.config(state=tk.NORMAL)
             return
         
-        self.qemu_tool = QemuTool(device, self.queue)
+        self.qemu_tool = QemuTool(device, self.queue, management_id, device_id)
         self.qemu_thread = Thread(target=self.qemu_tool.run)
         self.qemu_thread.start()
 
