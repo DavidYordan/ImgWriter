@@ -9,7 +9,6 @@ from queue import Queue
 from uuid import uuid4
 
 class QemuTool(QObject):
-    ERROR_NO_DATA = 232
     finished_signal = pyqtSignal()
     output_signal = pyqtSignal(str)
 

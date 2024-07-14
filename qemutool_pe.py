@@ -8,8 +8,6 @@ from queue import Queue
 from uuid import uuid4
 
 class QemuTool:
-    ERROR_NO_DATA = 232
-
     def __init__(self, device, queue):
         self.setup_paths(device)
         self.command_queue = Queue()
