@@ -1,23 +1,16 @@
 import os
-import pywintypes
 import socket
 import subprocess
 import sys
 import threading
 import time
-import win32file
-from ctypes import windll, byref, c_ulong, c_void_p
-from PyQt6.QtCore import QObject, pyqtSignal
 from queue import Queue
 from uuid import uuid4
 
-class QemuTool(QObject):
+class QemuTool:
     ERROR_NO_DATA = 232
-    finished_signal = pyqtSignal()
-    output_signal = pyqtSignal(str)
 
-    def __init__(self, device):
-        super().__init__()
+    def __init__(self, device, queue):
         self.setup_paths(device)
         self.command_queue = Queue()
         self.legacy_boot = False
@@ -28,37 +21,37 @@ class QemuTool(QObject):
         self.monitor_socket = None
         self.running = True
         self.uuid = ''
-        self.output_signal.emit(f'准备刷入固件至 {device}...')
         self.tasks_queue = Queue()
+        self.queue = queue
         self.setup_tasks()
         self.current_state = self.tasks_queue.get()
 
     def connect_core(self):
-        self.output_signal.emit('尝试连接内核...')
+        self.queue.put('尝试连接内核...')
         time.sleep(1)
         while True:
             try:
                 if not self.core_socket:
                     self.core_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.core_socket.connect(('127.0.0.1', self.core_port))
-                self.output_signal.emit('内核连接成功。')
+                self.queue.put('内核连接成功。')
                 return
             except:
-                self.output_signal.emit(f'连接内核失败, 正在重试...')
+                self.queue.put('连接内核失败, 正在重试...')
                 time.sleep(1)
 
     def connect_monitor(self):
-        self.output_signal.emit('尝试连接监视器...')
+        self.queue.put('尝试连接监视器...')
         time.sleep(1)
         while True:
             try:
                 if not self.monitor_socket:
                     self.monitor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.monitor_socket.connect(('127.0.0.1', self.monitor_port))
-                self.output_signal.emit('监视器连接成功。')
+                self.queue.put('监视器连接成功。')
                 return
             except:
-                self.output_signal.emit(f'连接监视器失败, 正在重试...')
+                self.queue.put('连接监视器失败, 正在重试...')
                 time.sleep(1)
 
     def find_available_port(self, start_port=50000, end_port=60000):
@@ -107,7 +100,7 @@ class QemuTool(QObject):
         if 'Please' in line:
             time.sleep(1)
             self.current_state = self.tasks_queue.get()
-            self.output_signal.emit('平台已就绪。')
+            self.queue.put('平台已就绪。')
             self.command_queue.put('')
             self.command_queue.put('')
 
@@ -140,14 +133,14 @@ class QemuTool(QObject):
             return
         time.sleep(2)
         self.current_state = self.tasks_queue.get()
-        self.output_signal.emit(f'{self.device}刷入固件...')
+        self.queue.put(f'{self.device}刷入固件...')
         self.command_queue.put(f'dd if=/dev/sdc of=/dev/sdb bs=4M')
 
     def write_img_state(self, line):
         if 'out' in line:
             time.sleep(0.5)
             self.current_state = self.tasks_queue.get()
-            self.output_signal.emit(f'修复{self.device}...')
+            self.queue.put(f'修复{self.device}...')
             self.command_queue.put(f'parted /dev/sdb')
 
     def extend_disk_state(self, line):
@@ -157,7 +150,7 @@ class QemuTool(QObject):
                 self.command_queue.put('resizepart 2 100%')
                 self.legacy_boot = False
             else:
-                self.output_signal.emit(f'硬盘格式异常，请寻求远程支持。')
+                self.queue.put(f'硬盘格式异常，请寻求远程支持。')
                 self.current_state = self.pass_state
                 self.command_queue.put('quit')
         elif 'I/O' in line:
@@ -171,7 +164,7 @@ class QemuTool(QObject):
             self.command_queue.put('OK')
         elif 'current' in line:
             time.sleep(0.5)
-            self.output_signal.emit(f'修复{self.device}分区表...')
+            self.queue.put(f'修复{self.device}分区表...')
             self.command_queue.put('Fix')
         elif 'legacy_boot' in line:
             self.legacy_boot = True
@@ -180,20 +173,20 @@ class QemuTool(QObject):
             self.command_queue.put('quit')
         elif 'quit' in line:
             time.sleep(0.5)
-            self.output_signal.emit(f'检修{self.device}分区...')
+            self.queue.put(f'检修{self.device}分区...')
             self.command_queue.put(f'e2fsck -f -p /dev/sdb2')
         elif 'inconsistency' in line:
             time.sleep(0.5)
-            self.output_signal.emit(f'硬盘格式异常，请尝试删除分区。')
+            self.queue.put(f'硬盘格式异常，请尝试删除分区。')
             self.current_state = self.pass_state
         elif 'contiguous' in line:
             time.sleep(0.5)
-            self.output_signal.emit(f'扩容{self.device}空间...')
+            self.queue.put(f'扩容{self.device}空间...')
             self.command_queue.put(f'resize2fs /dev/sdb2')
         elif 'long' in line:
             time.sleep(1)
             self.current_state = self.tasks_queue.get()
-            self.output_signal.emit(f'挂载{self.device}...')
+            self.queue.put(f'挂载{self.device}...')
             self.command_queue.put(f'mkdir -p /mnt/disk && mount /dev/sdb2 /mnt/disk')
 
     def mount_disk_state(self, line):
@@ -202,34 +195,34 @@ class QemuTool(QObject):
         time.sleep(1)
         self.uuid = str(uuid4())
         self.current_state = self.tasks_queue.get()
-        self.output_signal.emit('注入uuid...')
+        self.queue.put('注入uuid...')
         self.command_queue.put(f'echo uuid: {self.uuid} > /mnt/disk/etc/system.yaml')
 
     def umount_disk_state(self, line):
         if 'argument' in line:
             self.current_state = self.pass_state
-            self.output_signal.emit(f'挂载失败，请重启软件重试...')
+            self.queue.put(f'挂载失败，请重启软件重试...')
             return
         if 'uuid' not in line:
             return
         time.sleep(0.5)
         self.current_state = self.tasks_queue.get()
-        self.output_signal.emit(f'卸载{self.device}...')
+        self.queue.put(f'卸载{self.device}...')
         self.command_queue.put('umount /mnt/disk')
 
     def end_state(self, line):
         if 'umount' not in line:
             return
-        self.output_signal.emit('固件刷入成功。')
+        self.queue.put('固件刷入成功。')
         time.sleep(0.5)
         self.current_state = self.tasks_queue.get()
-        self.output_signal.emit('关闭固件平台...')
+        self.queue.put('关闭固件平台...')
         self.command_queue.put('poweroff')
         with open('uuid.txt', 'w', encoding='utf-8') as f:
             f.write(f'请将此id与平台管理账号绑定: {self.uuid}')
         os.system('uuid.txt')
         self.running = False
-        self.finished_signal.emit()
+        self.queue.put('FINISHED')
 
     def pass_state(self, line):
         pass
@@ -238,7 +231,7 @@ class QemuTool(QObject):
         try:
             self.current_state(line)
         except Exception as e:
-            self.output_signal.emit(f'Processing Error: {e}')
+            self.queue.put(f'Processing Error: {e}')
 
     def read_core(self):
         buffer = b''
@@ -261,7 +254,7 @@ class QemuTool(QObject):
                         self.process_line(line_str)
                     buffer = lines[-1]
             except Exception as e:
-                self.output_signal.emit(f'读取内核出错: {e}')
+                self.queue.put(f'读取内核出错: {e}')
                 time.sleep(0.2)
 
     def run(self):
@@ -277,7 +270,7 @@ class QemuTool(QObject):
             try:
                 self.core_socket.sendall(f'{command}\n'.encode())
             except Exception as e:
-                self.output_signal.emit(f'Sending Error: {e}')
+                self.queue.put(f'Sending Error: {e}')
             finally:
                 if command == 'poweroff':
                     return
@@ -298,7 +291,7 @@ class QemuTool(QObject):
         process = self.run_qemu(self.prepare_optool_command())
         self.connect_core()
         self.connect_monitor()
-        self.output_signal.emit('加载固件平台...')
+        self.queue.put('加载固件平台...')
 
         read_thread = threading.Thread(target=self.read_core)
         read_thread.start()
@@ -310,7 +303,7 @@ class QemuTool(QObject):
             read_thread.join()
             write_thread.join()
         except Exception as e:
-            self.output_signal.emit(f'Writing Error: {e}')
+            self.queue.put(f'Writing Error: {e}')
         finally:
             if self.core_socket:
                 self.core_socket.close()
@@ -321,11 +314,11 @@ class QemuTool(QObject):
 
     def add_drives(self, drive_type):
         if drive_type == 'physicaldrive':
-            self.output_signal.emit('装载硬盘...')
+            self.queue.put('装载硬盘...')
             self.send_monitor_command(f'drive_add 0 file={self.device},if=none,id=disk1,format=raw')
             self.send_monitor_command('device_add scsi-hd,drive=disk1,bus=scsi0.0')
         elif drive_type == 'netflex':
-            self.output_signal.emit('装载固件...')
+            self.queue.put('装载固件...')
             self.send_monitor_command(f'drive_add 0 file={self.netflexImg},if=none,id=disk2,format=raw')
             self.send_monitor_command('device_add scsi-hd,drive=disk2,bus=scsi0.0')
 
@@ -334,4 +327,4 @@ class QemuTool(QObject):
         try:
             self.monitor_socket.sendall(f'{command}\n'.encode())
         except Exception as e:
-            self.output_signal.emit(f'Monitor Error: {e}')
+            self.queue.put(f'Monitor Error: {e}')

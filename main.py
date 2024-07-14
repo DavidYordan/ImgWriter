@@ -132,7 +132,6 @@ class DiskImageWriter(QtWidgets.QWidget):
             self.start_button.setEnabled(True)
             return
         
-        
         self.qemu_tool = QemuTool(device)
         self.qemu_thread = QThread()
         self.qemu_tool.moveToThread(self.qemu_thread)

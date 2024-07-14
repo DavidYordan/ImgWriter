@@ -1,10 +1,9 @@
-__pycache__/
+__pycache1__/
 build/
 dist/
 img/
 qemutools/
 venv/
 *.spec
-*.txt
+uuid.txt
 server*
-qemutool_*
