@@ -202,7 +202,7 @@ class QemuTool:
             self.current_state = self.pass_state
             self.queue.put(f'挂载失败，请重启软件重试...')
             return
-        if 'UUID' not in line:
+        if 'heartbeat_retries' not in line:
             return
         time.sleep(0.5)
         self.current_state = self.tasks_queue.get()
@@ -282,13 +282,22 @@ class QemuTool:
         self.optoolImg = os.path.join(sysPath, 'img', 'optool.img')
         self.yaml = yaml.dump(
             {
-                'UUID': str(uuid4()),
-                'ManagementID': management_id,
-                'DeviceID': device_id,
-                'LocalPort': 56765,
-                'Servers': [f'clent{i}.duoruduochu.com' for i in range(1, 7)],
-                'HeartbeatInterval': 10,
-                'HeartbeatRetries': 3
+                'uuid': str(uuid4()),
+                'management_id': management_id,
+                'device_id': device_id,
+                'local_port': 56765,
+                'servers': [f'clent{i}.duoruduochu.com' for i in range(1, 7)],
+                'ntp_servers': [
+                    'cn.pool.ntp.org',
+                    'asia.pool.ntp.org',
+                    'pool.ntp.org',   
+                    'ntp.aliyun.com',
+                    'ntp.tencent.com',
+                    'ntp.baidu.com',
+                    'time.edu.cn',
+                    'ntp.sjtu.edu.cn',
+                    'ntp.tuna.tsinghua.edu.cn'
+                ]
             },
             default_flow_style=False
         ).replace('\n', '\\n').replace('"', '\\"')
